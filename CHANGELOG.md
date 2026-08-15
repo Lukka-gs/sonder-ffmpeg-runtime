@@ -66,6 +66,9 @@ independent repository and first public runtime release.
   `out1/sonder-ffmpeg-source.tar.gz`, so `sha256sum -c` failed after downloading both public assets
   into one directory. Sidecars now contain only the portable artifact basename, and the verifier
   rejects path-bearing records.
+- The corresponding-source verifier required GNU tar's `--force-local`, which the native Windows
+  bsdtar rejects. It now retries without that option only when the installed tar reports it as
+  unsupported, and both CI workflows verify the source package on Windows.
 
 ### Known limitations
 

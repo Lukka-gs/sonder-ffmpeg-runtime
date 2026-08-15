@@ -72,8 +72,20 @@ function requireFile(path, label) {
 // Lista os membros do tar de forma estruturada (argv, nunca shell) --
 // protege contra path traversal ao extrair depois (nunca confia em nomes
 // de entrada com `..` ou caminho absoluto).
+function runTar(args, options) {
+  const withForceLocal = spawnSync("tar", ["--force-local", ...args], options);
+  if (withForceLocal.status === 0) return withForceLocal;
+
+  const diagnostic = `${withForceLocal.stderr ?? ""}\n${withForceLocal.stdout ?? ""}`;
+  if (!/--force-local.*(?:not supported|unknown|unrecognized|illegal option)/is.test(diagnostic)) {
+    return withForceLocal;
+  }
+
+  return spawnSync("tar", args, options);
+}
+
 function listTarMembers(tarPath) {
-  const result = spawnSync("tar", ["--force-local", "-tzf", tarPath], { encoding: "utf8" });
+  const result = runTar(["-tzf", tarPath], { encoding: "utf8" });
   if (result.status !== 0) {
     throw new Error(`tar -tzf falhou (exit ${result.status}): ${result.stderr}`);
   }
@@ -99,10 +111,9 @@ function extractTar(tarPath) {
   // qualquer ambiguidade de tradução de caminho (ex.: tar do Git Bash no
   // Windows interpretando "C:\..." como sintaxe de host remoto) entre
   // Node (caminhos nativos do Windows) e uma instalação MSYS/Cygwin de
-  // `tar`. `--force-local` tambem mantido como defesa em profundidade para
-  // o argumento de ENTRADA (tarPath), que ainda precisa ser passado como
-  // string.
-  const result = spawnSync("tar", ["--force-local", "-xzf", resolve(tarPath)], {
+  // `tar`. `runTar` usa `--force-local` quando suportado pelo GNU tar e
+  // repete sem essa opcao quando o bsdtar nativo do Windows a rejeita.
+  const result = runTar(["-xzf", resolve(tarPath)], {
     encoding: "utf8",
     cwd: dest,
   });
