@@ -62,6 +62,10 @@ independent repository and first public runtime release.
   given the same input twice -- never that the two independent builds produced equivalent source
   evidence. Fixed to read each generation from its own build output, plus an explicit `cmp` of
   `out1`/`out2`'s `sources/*.tar.gz` and `*-changes.diff`.
+- The corresponding-source checksum sidecar recorded the CI-internal path
+  `out1/sonder-ffmpeg-source.tar.gz`, so `sha256sum -c` failed after downloading both public assets
+  into one directory. Sidecars now contain only the portable artifact basename, and the verifier
+  rejects path-bearing records.
 
 ### Known limitations
 
