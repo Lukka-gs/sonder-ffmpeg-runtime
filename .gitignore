@@ -1,0 +1,22 @@
+# Never version binaries, build output, fixtures, or downloaded/generated artifacts.
+build/out1/
+build/out2/
+build/out/
+build/sources/*
+!build/sources/.gitkeep
+*.log
+*.exe
+*.mp4
+*.mkv
+*.mov
+*.webm
+*.m4v
+*.tar.gz
+*.tar
+*.sha256
+*.zip
+
+# Editor/OS cruft
+.DS_Store
+Thumbs.db
+node_modules/

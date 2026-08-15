@@ -1,0 +1,146 @@
+name: verify
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Least privilege by default -- nenhum job deste workflow escreve em
+# nenhum lugar do repositorio nem publica nada; so le o codigo e roda
+# verificacoes. Aumentar permissao especifica por job, nunca aqui no topo.
+permissions:
+  contents: read
+
+jobs:
+  linux-build-and-verify:
+    name: Build + verify (Linux)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Build the reproducible build image
+        working-directory: build
+        run: docker build -t sonder-ffmpeg-runtime:build .
+
+      - name: Run two independent, clean builds
+        working-directory: build
+        run: |
+          set -euo pipefail
+          mkdir -p out1 out2
+          docker run --rm -v "$(pwd)/out1:/out" sonder-ffmpeg-runtime:build
+          docker run --rm -v "$(pwd)/out2:/out" sonder-ffmpeg-runtime:build
+
+      - name: Compare ffmpeg.exe / ffprobe.exe byte-for-byte
+        working-directory: build
+        run: |
+          set -euo pipefail
+          cmp out1/ffmpeg.exe out2/ffmpeg.exe
+          cmp out1/ffprobe.exe out2/ffprobe.exe
+          echo "ffmpeg.exe e ffprobe.exe sao byte-identicos entre os dois builds"
+
+      - name: Compare link maps and validate root objects
+        working-directory: build
+        run: |
+          set -euo pipefail
+          cmp out1/ffmpeg-link.map out2/ffmpeg-link.map
+          cmp out1/ffprobe-link.map out2/ffprobe-link.map
+          node ../scripts/verify-artifacts.mjs \
+            --ffmpeg out1/ffmpeg.exe \
+            --ffprobe out1/ffprobe.exe \
+            --sha256sums out1/SHA256SUMS.txt \
+            --ffmpeg-link-map out1/ffmpeg-link.map \
+            --ffprobe-link-map out1/ffprobe-link.map
+
+      - name: Generate two source packages INDEPENDENTLY (out1 and out2) and confirm identical hashes
+        working-directory: build
+        run: |
+          set -euo pipefail
+          # Cada geracao le a evidencia (sources/*.tar.gz, *-changes.diff) do
+          # SEU PROPRIO build independente -- out1 lendo de out1, out2 lendo
+          # de out2 -- nunca as duas gerando a partir do mesmo out1 (isso
+          # provaria so que package-source.sh e deterministico dado o MESMO
+          # input duas vezes, nunca que os dois builds independentes
+          # produziram uma fonte equivalente).
+          ./package-source.sh out1/sonder-ffmpeg-source.tar.gz out1
+          ./package-source.sh out2/sonder-ffmpeg-source.tar.gz out2
+          cmp out1/sonder-ffmpeg-source.tar.gz out2/sonder-ffmpeg-source.tar.gz
+          echo "pacotes-fonte byte-identicos (gerados independentemente de out1 e out2)"
+
+      - name: Validate both source packages and prove out1/out2 sources+diffs are equivalent
+        working-directory: build
+        run: |
+          set -euo pipefail
+          node ../scripts/verify-source-package.mjs \
+            --package out1/sonder-ffmpeg-source.tar.gz \
+            --sidecar out1/sonder-ffmpeg-source.tar.gz.sha256 \
+            --compare-with out2/sonder-ffmpeg-source.tar.gz \
+            --check-self-reference
+          node ../scripts/verify-source-package.mjs \
+            --package out2/sonder-ffmpeg-source.tar.gz \
+            --sidecar out2/sonder-ffmpeg-source.tar.gz.sha256
+          # Prova de que a EVIDENCIA de origem dos dois builds independentes
+          # e equivalente, nao so o pacote final: os tarballs de fonte
+          # baixados/verificados por cada build, e os diffs contra a
+          # baseline pristina de cada um, tem que bater byte a byte.
+          cmp out1/sources/ffmpeg.tar.gz out2/sources/ffmpeg.tar.gz
+          cmp out1/sources/dav1d.tar.gz out2/sources/dav1d.tar.gz
+          cmp out1/ffmpeg-changes.diff out2/ffmpeg-changes.diff
+          cmp out1/dav1d-changes.diff out2/dav1d-changes.diff
+          echo "sources/ e changes.diff de out1 e out2 confirmados equivalentes"
+
+      - name: Validate SBOM and license files are present
+        run: |
+          set -euo pipefail
+          test -s docs/SBOM.md
+          test -s docs/BUILD_MANIFEST.json
+          node -e "JSON.parse(require('fs').readFileSync('docs/BUILD_MANIFEST.json','utf8'))"
+          for f in \
+            licenses/FFmpeg/COPYING.LGPLv3 \
+            licenses/dav1d/COPYING \
+            licenses/GCC/RUNTIME.LIBRARY.EXCEPTION \
+            licenses/MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt; do
+            test -s "$f" || { echo "ERRO: $f ausente ou vazio" >&2; exit 1; }
+          done
+          echo "SBOM, manifesto e todos os textos de licenca presentes"
+
+      - name: Upload artifacts for the Windows job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-runtime-artifacts
+          path: |
+            build/out1/ffmpeg.exe
+            build/out1/ffprobe.exe
+            build/out1/SHA256SUMS.txt
+            build/out1/ffmpeg-link.map
+            build/out1/ffprobe-link.map
+            build/out1/LINKMAP-SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-functional-verify:
+    name: Functional verify (Windows)
+    needs: linux-build-and-verify
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Download Linux-built artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-runtime-artifacts
+          path: artifacts
+
+      - name: Functional verification gate (shared script -- same one release.yml calls)
+        shell: pwsh
+        run: pwsh -File scripts/verify-functional.ps1 -ArtifactsDir artifacts
+
+      # Nenhuma fixture, video ou binario e commitado -- todo arquivo gerado
+      # por scripts/verify-functional.ps1 e scripts/generate-baseline-fixture.mjs
+      # vive so num diretorio temporario desta execucao de workflow, removido
+      # ao final de cada etapa, nunca versionado (ver .gitignore).

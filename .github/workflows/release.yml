@@ -1,0 +1,218 @@
+name: release
+
+# Disparo SOMENTE manual (workflow_dispatch). Nenhum trigger automatico por
+# push/tag existe neste arquivo -- publicar uma release nunca pode acontecer
+# so por alguem empurrar um commit ou uma tag para o repositorio.
+#
+# Este workflow NAO publica nenhuma GitHub Release nesta meta: ele so
+# produz um release candidate (ZIP + pacote-fonte + SBOM + avisos de
+# terceiros) como artifact do proprio workflow run, para inspecao manual e
+# download. Nao existe nenhum job de publicacao aqui -- criar um e decidir
+# como/quando publicar de fato fica para uma meta futura, com autorizacao
+# explicita.
+on:
+  workflow_dispatch: {}
+
+# Least privilege em todos os jobs. Nenhum job deste workflow escreve no
+# repositorio nem em nenhum recurso externo -- so builda, verifica e sobe
+# artifacts do proprio workflow run (que nao exige contents: write).
+permissions:
+  contents: read
+
+jobs:
+  # Reusa exatamente os mesmos gates de verify.yml: build duas vezes,
+  # compara byte a byte, valida SBOM/licencas, gera e valida o
+  # pacote-fonte. Um release candidate nunca pode ser montado sem que todos
+  # estes gates passem primeiro.
+  verify-gates:
+    name: Verify gates (reused from verify.yml)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Build the reproducible build image
+        working-directory: build
+        run: docker build -t sonder-ffmpeg-runtime:build .
+
+      - name: Run two independent, clean builds
+        working-directory: build
+        run: |
+          set -euo pipefail
+          mkdir -p out1 out2
+          docker run --rm -v "$(pwd)/out1:/out" sonder-ffmpeg-runtime:build
+          docker run --rm -v "$(pwd)/out2:/out" sonder-ffmpeg-runtime:build
+
+      - name: Compare ffmpeg.exe / ffprobe.exe byte-for-byte
+        working-directory: build
+        run: |
+          set -euo pipefail
+          cmp out1/ffmpeg.exe out2/ffmpeg.exe
+          cmp out1/ffprobe.exe out2/ffprobe.exe
+
+      - name: Compare link maps and validate artifacts
+        working-directory: build
+        run: |
+          set -euo pipefail
+          cmp out1/ffmpeg-link.map out2/ffmpeg-link.map
+          cmp out1/ffprobe-link.map out2/ffprobe-link.map
+          node ../scripts/verify-artifacts.mjs \
+            --ffmpeg out1/ffmpeg.exe \
+            --ffprobe out1/ffprobe.exe \
+            --sha256sums out1/SHA256SUMS.txt \
+            --ffmpeg-link-map out1/ffmpeg-link.map \
+            --ffprobe-link-map out1/ffprobe-link.map
+
+      - name: Generate two source packages INDEPENDENTLY (out1 and out2) and confirm identical hashes
+        working-directory: build
+        run: |
+          set -euo pipefail
+          # Cada geracao le a evidencia (sources/*.tar.gz, *-changes.diff) do
+          # SEU PROPRIO build independente -- out1 lendo de out1, out2 lendo
+          # de out2 -- nunca as duas gerando a partir do mesmo out1.
+          ./package-source.sh out1/sonder-ffmpeg-source.tar.gz out1
+          ./package-source.sh out2/sonder-ffmpeg-source.tar.gz out2
+          cmp out1/sonder-ffmpeg-source.tar.gz out2/sonder-ffmpeg-source.tar.gz
+
+      - name: Validate both source packages and prove out1/out2 sources+diffs are equivalent
+        working-directory: build
+        run: |
+          set -euo pipefail
+          node ../scripts/verify-source-package.mjs \
+            --package out1/sonder-ffmpeg-source.tar.gz \
+            --sidecar out1/sonder-ffmpeg-source.tar.gz.sha256 \
+            --compare-with out2/sonder-ffmpeg-source.tar.gz \
+            --check-self-reference
+          node ../scripts/verify-source-package.mjs \
+            --package out2/sonder-ffmpeg-source.tar.gz \
+            --sidecar out2/sonder-ffmpeg-source.tar.gz.sha256
+          cmp out1/sources/ffmpeg.tar.gz out2/sources/ffmpeg.tar.gz
+          cmp out1/sources/dav1d.tar.gz out2/sources/dav1d.tar.gz
+          cmp out1/ffmpeg-changes.diff out2/ffmpeg-changes.diff
+          cmp out1/dav1d-changes.diff out2/dav1d-changes.diff
+
+      - name: Validate SBOM and license files are present
+        run: |
+          set -euo pipefail
+          test -s docs/SBOM.md
+          test -s docs/BUILD_MANIFEST.json
+          node -e "JSON.parse(require('fs').readFileSync('docs/BUILD_MANIFEST.json','utf8'))"
+          for f in \
+            licenses/FFmpeg/COPYING.LGPLv3 \
+            licenses/dav1d/COPYING \
+            licenses/GCC/RUNTIME.LIBRARY.EXCEPTION \
+            licenses/MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt; do
+            test -s "$f" || { echo "ERRO: $f ausente ou vazio" >&2; exit 1; }
+          done
+
+      - name: Upload verified build output for the package job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-build-output
+          path: |
+            build/out1/ffmpeg.exe
+            build/out1/ffprobe.exe
+            build/out1/SHA256SUMS.txt
+            build/out1/ffmpeg-link.map
+            build/out1/ffprobe-link.map
+            build/out1/LINKMAP-SHA256SUMS.txt
+            build/out1/sonder-ffmpeg-source.tar.gz
+            build/out1/sonder-ffmpeg-source.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  # Verificacao funcional Windows -- chama o MESMO script compartilhado que
+  # verify.yml chama (scripts/verify-functional.ps1). Roda de novo aqui
+  # (em vez de depender de um workflow run separado) porque um release
+  # candidate nunca pode se basear numa verificacao potencialmente
+  # desatualizada de outra execucao.
+  windows-functional-verify:
+    name: Functional verify (Windows, shared script)
+    needs: verify-gates
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Download build output
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-build-output
+          path: artifacts
+
+      - name: Functional verification gate (shared script -- same one verify.yml calls)
+        shell: pwsh
+        run: pwsh -File scripts/verify-functional.ps1 -ArtifactsDir artifacts
+
+  # Monta o release candidate apenas depois que TODOS os gates acima
+  # passaram. Produz e sobe os artefatos planejados SOMENTE como artifact
+  # do proprio workflow run -- nao existe nenhuma publicacao de GitHub
+  # Release nesta meta, nenhuma tag e criada, e nenhuma permissao de
+  # escrita e usada em nenhum passo deste job.
+  package:
+    name: Assemble release candidate (workflow artifact only -- not published)
+    needs: [verify-gates, windows-functional-verify]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Download verified build output
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-build-output
+          path: build/out1
+
+      - name: Stage ZIP payload (files that go inside sonder-ffmpeg-windows-x64.zip)
+        run: |
+          set -euo pipefail
+          mkdir -p stage/sonder-ffmpeg-windows-x64
+          cp build/out1/ffmpeg.exe stage/sonder-ffmpeg-windows-x64/
+          cp build/out1/ffprobe.exe stage/sonder-ffmpeg-windows-x64/
+          cp README.md LICENSE THIRD_PARTY_NOTICES.md stage/sonder-ffmpeg-windows-x64/
+          cp docs/SBOM.md stage/sonder-ffmpeg-windows-x64/
+
+      - name: Build the ZIP twice in independent directories and confirm byte-for-byte reproducibility
+        run: |
+          set -euo pipefail
+          mkdir -p zipgen1/payload zipgen2/payload
+          cp -r stage/sonder-ffmpeg-windows-x64/. zipgen1/payload/
+          cp -r stage/sonder-ffmpeg-windows-x64/. zipgen2/payload/
+          build/make-release-zip.sh "$(pwd)/zipgen1/sonder-ffmpeg-windows-x64.zip" zipgen1/payload
+          build/make-release-zip.sh "$(pwd)/zipgen2/sonder-ffmpeg-windows-x64.zip" zipgen2/payload
+          cmp zipgen1/sonder-ffmpeg-windows-x64.zip zipgen2/sonder-ffmpeg-windows-x64.zip
+          echo "ZIP byte-identico entre as duas geracoes independentes"
+
+      - name: Finalize dist/ and generate the external SHA-256 sidecar (after the ZIP is closed)
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp zipgen1/sonder-ffmpeg-windows-x64.zip dist/sonder-ffmpeg-windows-x64.zip
+          # O sidecar e gerado SO agora, depois que o .zip acima ja esta
+          # fechado e confirmado byte-identico entre as duas geracoes --
+          # nunca antes, e o sidecar em si nunca entra dentro do .zip.
+          ( cd dist && sha256sum sonder-ffmpeg-windows-x64.zip > sonder-ffmpeg-windows-x64.zip.sha256 )
+          cp build/out1/sonder-ffmpeg-source.tar.gz dist/
+          cp build/out1/sonder-ffmpeg-source.tar.gz.sha256 dist/
+          cp docs/SBOM.md dist/SBOM.md
+          cp THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md
+
+      - name: Upload release candidate (workflow artifact only, not published anywhere)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sonder-ffmpeg-release-candidate
+          path: |
+            dist/sonder-ffmpeg-windows-x64.zip
+            dist/sonder-ffmpeg-windows-x64.zip.sha256
+            dist/sonder-ffmpeg-source.tar.gz
+            dist/sonder-ffmpeg-source.tar.gz.sha256
+            dist/SBOM.md
+            dist/THIRD_PARTY_NOTICES.md
+          if-no-files-found: error
+          retention-days: 14

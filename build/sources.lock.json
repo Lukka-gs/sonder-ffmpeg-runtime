@@ -1,0 +1,16 @@
+{
+  "_comment": "Fontes fixadas por URL+SHA256, nunca 'git fetch' movel durante o build. build.sh baixa exatamente estas URLs e recusa continuar se o SHA-256 nao bater antes de extrair.",
+  "ffmpeg": {
+    "commit": "9b6c8969e05b4f0b29f0f85cd501be6b3e582e6b",
+    "url": "https://github.com/FFmpeg/FFmpeg/archive/9b6c8969e05b4f0b29f0f85cd501be6b3e582e6b.tar.gz",
+    "sha256": "7e779215eae16ad7e93ddad59bd82822bd3d34e4dc61f9996f9481b2c0605bc3",
+    "license": "LGPL-3.0-or-later (--enable-version3, --disable-gpl, --disable-nonfree)"
+  },
+  "dav1d": {
+    "tag": "1.5.4",
+    "commit": "191bdda98ec3c68137754dc97da1db34043d7cd4",
+    "url": "https://code.videolan.org/videolan/dav1d/-/archive/1.5.4/dav1d-1.5.4.tar.gz",
+    "sha256": "a1d5b63d2d38ec9bd03acf643caa51fa22edd1e89c5a109c4807717216bbec07",
+    "license": "BSD-2-Clause"
+  }
+}

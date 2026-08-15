@@ -1,0 +1,7 @@
+D8.3A - placeholder tracked so this directory exists on a fresh clone.
+Dockerfile does `COPY sources/ /build/vendored-sources/` -- if the two
+pinned tarballs (ffmpeg-*.tar.gz, dav1d-*.tar.gz, see ../sources.lock.json)
+are present here at build time, build.sh uses them directly (no network
+needed); otherwise it falls back to downloading from the pinned URLs and
+verifies the SHA-256 either way. The tarballs themselves are gitignored
+(*.tar.gz) -- never committed.

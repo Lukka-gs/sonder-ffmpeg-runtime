@@ -1,0 +1,197 @@
+# D8.3A - Configure line completa do build minimo LGPL do FFmpeg + dav1d
+# (unica biblioteca externa de codec, para decode de AV1 por software).
+# Uma flag por linha (sem continuacao de barra invertida) para o script de
+# build poder ler este arquivo diretamente, e para o diff entre execucoes
+# ficar trivial de revisar. Comentarios (#) e linhas em branco sao
+# ignorados pelo script.
+
+# --- Toolchain / plataforma -------------------------------------------------
+--arch=x86_64
+--target-os=mingw32
+--cross-prefix=x86_64-w64-mingw32-
+--enable-cross-compile
+# Sem isto, o configure usa por padrao "${cross-prefix}pkg-config"
+# (`x86_64-w64-mingw32-pkg-config`), que nao existe -- so o `pkg-config`
+# generico do host esta instalado (usado com PKG_CONFIG_LIBDIR apontado
+# exclusivamente para o dav1d recem-compilado, nunca uma copia do sistema).
+# Descoberto empiricamente: sem este flag, "--enable-libdav1d" falhava com
+# "dav1d >= 1.0.0 not found using pkg-config" mesmo com o .pc correto e
+# `pkg-config --exists dav1d` funcionando manualmente.
+--pkg-config=pkg-config
+
+# --- Licenciamento (requisito obrigatorio da meta) --------------------------
+--disable-gpl
+--disable-nonfree
+--enable-version3
+
+# --- Sem rede, sem autodeteccao de bibliotecas do sistema --------------------
+--disable-network
+--disable-autodetect
+
+# --- Baseline minimo: desliga TUDO, depois so reabilita o que a matriz de uso
+# real (docs/USAGE_MATRIX.md) exige -----------------------------------------
+--disable-everything
+--disable-doc
+--disable-htmlpages
+--disable-manpages
+--disable-podpages
+--disable-txtpages
+--disable-debug
+
+# --- Binario unico, sem DLL externa alem do runtime do Windows -------------
+--enable-static
+--disable-shared
+
+# --- Encoder de video: Media Foundation nativo do Windows (unico H.264) ----
+--enable-mediafoundation
+# `libavcodec/mfenc.c` referencia incondicionalmente os tipos de contexto de
+# dispositivo D3D11 (`AVD3D11VADeviceContext`/`ID3D11Texture2D`) mesmo no
+# caminho de encoding por SOFTWARE (`-hw_encoding 0`, o unico usado pelo
+# pipeline real -- ver ffmpeg_proxy.rs) -- sem este flag, a compilacao falha
+# com "undeclared identifier". `--enable-d3d11va` so compila as definicoes de
+# contexto D3D11 do proprio `libavutil` (headers do Windows SDK via
+# mingw-w64, nenhuma biblioteca externa) -- nunca liga uma dependencia de
+# terceiros, so torna o tipo conhecido do compilador.
+--enable-d3d11va
+# HISTORICO (revisao anterior, substituida por esta correcao): a primeira
+# tentativa de decodificar AV1 usava o decoder NATIVO `av1` do proprio
+# FFmpeg (`libavcodec/av1dec.c`) + hwaccel D3D11VA/DXVA2. Descobrimos, lendo
+# o proprio codigo-fonte upstream ("Since now the av1 decoder doesn't
+# support native decode"), que esse decoder nativo NUNCA teve caminho de
+# decodificacao por software -- e um dispatcher exclusivo para hwaccel. Isso
+# tornava o suporte a AV1 dependente de GPU/driver D3D11VA/DXVA2, o que nao
+# e aceitavel como solucao final (o pipeline real da Sonder roda em qualquer
+# maquina Windows x64, com ou sem GPU compativel). CORRIGIDO nesta revisao:
+# `dav1d` (BSD-2-Clause, unica biblioteca externa de codec deste build,
+# fonte fixada em sources.lock.json) decodifica AV1 inteiramente por
+# software -- ver secao "libdav1d" abaixo. `--enable-d3d11va` continua
+# necessario so pelo motivo original: `libavcodec/mfenc.c` (o ENCODER
+# `h264_mf`) referencia incondicionalmente tipos de contexto D3D11 mesmo no
+# caminho de encoding por software (`-hw_encoding 0`, o unico usado pelo
+# pipeline real) -- sem este flag a compilacao falha com "undeclared
+# identifier". Como nenhum decoder deste build usa mais hwaccel nenhum
+# (nem o AV1, agora via dav1d puro-software), o bulk `--disable-hwaccels`
+# cobre todos os casos sem precisar de nenhuma excecao por codec.
+--disable-hwaccels
+
+# --- libdav1d: unica biblioteca externa de codec deste build (BSD-2-Clause,
+# fonte fixada por URL+SHA256 em sources.lock.json, nunca "latest"),
+# compilada estaticamente pelo proprio build.sh (meson+ninja, cross-file
+# mingw-w64-x86_64-cross.meson) e linkada estaticamente ao ffmpeg.exe final
+# via pkg-config apontado exclusivamente para o prefixo de instalacao do
+# dav1d (nunca uma copia do sistema). Decodifica AV1 inteiramente por
+# software -- nao depende de D3D11VA/DXVA2/nenhuma GPU, funciona em
+# qualquer maquina Windows x64. O decoder nativo `av1` (hwaccel-only, ver
+# historico acima) NAO e mais habilitado -- so `libdav1d` responde por
+# AV_CODEC_ID_AV1, entao o pipeline real (que nunca passa `-c:v` na decodifi
+# cacao, so deixa o FFmpeg escolher automaticamente pelo codec do stream de
+# entrada) usa dav1d automaticamente, sem nenhuma mudanca de codigo.
+--enable-libdav1d
+--enable-decoder=libdav1d
+
+# --- Programas: precisamos de ffmpeg.exe E ffprobe.exe, nada mais ----------
+--enable-ffmpeg
+--enable-ffprobe
+--disable-ffplay
+--disable-avdevice
+
+# --- Bibliotecas internas do proprio FFmpeg (nunca externas) ---------------
+--enable-avcodec
+--enable-avformat
+--enable-avutil
+--enable-swscale
+--enable-swresample
+
+# --- Protocolos: arquivo local + pipe de descritor (`-progress pipe:2`,
+# usado por ffmpeg_proxy.rs para reportar progresso -- descoberto pela
+# primeira execucao real do pipeline D8.2F contra este candidato, corrigido
+# aqui). Nenhum dos dois e rede -- `pipe:` so encaminha para um descritor de
+# arquivo ja aberto pelo processo pai (stdout/stderr), nunca abre conexao
+# nenhuma. Ver USAGE_MATRIX secao 10.
+--enable-protocol=file
+--enable-protocol=pipe
+
+# --- Demuxers: MP4/MOV/M4V (mov) e MKV/WebM (matroska) ----------------------
+--enable-demuxer=mov
+--enable-demuxer=matroska
+
+# --- Demuxers de entrada MINIMA para o gate de CI (nunca usados pelo
+# pipeline real de producao, so pelo baseline funcional obrigatorio de
+# verify.yml/release.yml): Y4M (YUV4MPEG2, video cru) e WAV (PCM linear).
+# Escolhidos porque nenhum dos dois exige nenhum codec/decoder alem do que
+# ja estava habilitado (`pcm_s16le` acima) ou de um decoder trivial e
+# proprio do FFmpeg (`rawvideo`, sem nenhuma biblioteca externa) -- entao
+# nao adicionam nenhuma superficie de decode real ao binario alem do que a
+# propria geracao de fixture do gate ja precisa. Confirmado empiricamente
+# (nao so por inspecao): sem estas duas linhas, o candidato real rejeitava
+# o baseline com "Invalid data found when processing input" ao tentar abrir
+# um .y4m/.wav -- so `mov` e `matroska` estavam habilitados antes.
+--enable-demuxer=yuv4mpegpipe
+--enable-demuxer=wav
+--enable-decoder=rawvideo
+
+# --- Muxer de saida: sempre MP4 ---------------------------------------------
+# `ffmpeg_proxy.rs` sempre passa `-f mp4` explicitamente (nunca `-f mov`) --
+# apesar de `mov`/`mp4` compartilharem a mesma implementacao interna
+# (movenc.c), o FFmpeg registra cada nome curto como um muxer SEPARADO
+# selecionavel por `--enable-muxer`. `--enable-muxer=mov` sozinho NAO
+# habilita o nome "mp4" (descoberto pela primeira execucao real do
+# pipeline D8.2F contra o candidato: "Requested output format 'mp4' is not
+# known"). O demuxer nao tem essa armadilha -- um unico `--enable-demuxer=mov`
+# ja cobre mp4/mov/m4v/3gp na LEITURA (confirmado por ffprobe real, ver
+# VALIDATION_REPORT.md).
+--enable-muxer=mp4
+--enable-muxer=mov
+
+# --- Decoders de video de ENTRADA (decode-only, nunca precisam de lib
+# externa -- ver USAGE_MATRIX secao 6) ---------------------------------------
+--enable-decoder=h264
+--enable-decoder=hevc
+--enable-decoder=mpeg4
+--enable-decoder=vp8
+--enable-decoder=vp9
+--enable-decoder=prores
+--enable-decoder=dnxhd
+
+# --- Decoders de audio de ENTRADA (decode-only -- ver USAGE_MATRIX secao 7) -
+--enable-decoder=aac
+--enable-decoder=mp3
+--enable-decoder=mp3float
+--enable-decoder=opus
+--enable-decoder=pcm_s16le
+--enable-decoder=pcm_s16be
+--enable-decoder=pcm_s24le
+--enable-decoder=pcm_s24be
+--enable-decoder=pcm_s32le
+--enable-decoder=pcm_u8
+--enable-decoder=pcm_f32le
+--enable-decoder=pcm_alaw
+--enable-decoder=pcm_mulaw
+
+# --- Parsers correspondentes (rechunking de pacotes antes do decoder) ------
+--enable-parser=h264
+--enable-parser=hevc
+--enable-parser=mpeg4video
+--enable-parser=vp8
+--enable-parser=vp9
+--enable-parser=av1
+--enable-parser=aac
+--enable-parser=mpegaudio
+--enable-parser=opus
+
+# --- Encoders de SAIDA: exatamente os dois que o pipeline chama -------------
+--enable-encoder=h264_mf
+--enable-encoder=aac
+
+# --- Filtro explicito usado pelo pipeline (ffmpeg_proxy.rs -vf scale=...),
+# mais os filtros de conversao automatica de formato que o proprio FFmpeg
+# insere no grafo (pixel format apos o scale, sample format/canais de audio
+# antes do encoder AAC) -- sem eles a conversao automatica pix_fmt/sample_fmt
+# falha, mesmo sem nenhum -vf/-af explicito adicional no comando real.
+--enable-filter=scale
+--enable-filter=format
+--enable-filter=aresample
+--enable-filter=aformat
+
+# --- Bitstream filters: nenhum -- o pipeline nunca remuxa H.264/AAC cru
+# (sempre reencoda), entao nenhum -bsf: e usado em build_ffmpeg_args.

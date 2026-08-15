@@ -1,0 +1,18 @@
+# Normalize line endings for text files; keep shell scripts LF always
+# (Windows checkouts must not corrupt scripts meant to run inside Linux
+# containers via CRLF conversion).
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.mjs text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+Dockerfile text eol=lf
+configure-flags.txt text eol=lf
+
+# Binary-ish files that must never be diffed/normalized as text
+*.exe binary
+*.tar.gz binary
+*.zip binary

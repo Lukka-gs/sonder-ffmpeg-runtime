@@ -1,0 +1,228 @@
+{
+  "project": "sonder-ffmpeg-runtime",
+  "purpose": "Build minimo LGPL do FFmpeg + dav1d para Windows x64 -- runtime independente, sem nenhum aplicativo consumidor incluido neste repositorio.",
+  "generatedAt": "2026-08-15",
+  "sourcesLockFile": "build/sources.lock.json",
+  "source": {
+    "project": "FFmpeg",
+    "url": "https://github.com/FFmpeg/FFmpeg/archive/9b6c8969e05b4f0b29f0f85cd501be6b3e582e6b.tar.gz",
+    "commit": "9b6c8969e05b4f0b29f0f85cd501be6b3e582e6b",
+    "sha256": "7e779215eae16ad7e93ddad59bd82822bd3d34e4dc61f9996f9481b2c0605bc3",
+    "note": "Fonte baixada como tarball FIXO por URL+SHA256, nunca 'git fetch' contra um remoto movel.",
+    "immutable": true
+  },
+  "externalCodecLibrary": {
+    "project": "dav1d",
+    "tag": "1.5.4",
+    "commit": "191bdda98ec3c68137754dc97da1db34043d7cd4",
+    "url": "https://code.videolan.org/videolan/dav1d/-/archive/1.5.4/dav1d-1.5.4.tar.gz",
+    "sha256": "a1d5b63d2d38ec9bd03acf643caa51fa22edd1e89c5a109c4807717216bbec07",
+    "license": "BSD-2-Clause",
+    "reason": "Decodificar AV1 inteiramente por software -- o decoder nativo 'av1' do proprio FFmpeg (libavcodec/av1dec.c neste commit) e hwaccel-only por design upstream, sem caminho de decodificacao por software. Unica biblioteca externa deste build.",
+    "immutable": true
+  },
+  "buildEnvironment": {
+    "baseImage": "debian:bookworm-slim",
+    "baseImageDigest": "debian@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241",
+    "baseImageDigestNote": "O digest da imagem fixa apenas o filesystem da imagem base, NAO o conteudo do repositorio APT consultado depois por 'apt-get update'/'install' -- esse e fixado separadamente, ver 'aptSnapshot' abaixo.",
+    "aptSnapshot": {
+      "source": "snapshot.debian.org",
+      "timestamp": "20260814T082106Z",
+      "suite": "bookworm",
+      "component": "main",
+      "protocol": "http (snapshot.debian.org aceita HTTP; integridade vem da assinatura GPG do Release, ja embutida na imagem base, nao de TLS)",
+      "note": "As fontes APT padrao da imagem (formato DEB822 em /etc/apt/sources.list.d/debian.sources, apontando para deb.debian.org, um espelho MOVEL) sao removidas e substituidas por esta unica fonte fixa antes de qualquer apt-get update/install."
+    },
+    "dockerfile": "build/Dockerfile",
+    "buildScript": "build/build.sh",
+    "configureFlagsFile": "build/configure-flags.txt",
+    "mesonCrossFile": "build/mingw-w64-x86_64-cross.meson",
+    "sourceDateEpoch": 1700000000,
+    "toolchainPackages": [
+      { "name": "ca-certificates", "version": "20230311+deb12u1" },
+      { "name": "git", "version": "1:2.39.5-0+deb12u3" },
+      { "name": "make", "version": "4.3-4.1" },
+      { "name": "pkg-config", "version": "1.8.1-1" },
+      { "name": "yasm", "version": "1.3.0-4" },
+      { "name": "nasm", "version": "2.16.01-1" },
+      { "name": "mingw-w64", "version": "10.0.0-3" },
+      { "name": "mingw-w64-common", "version": "10.0.0-3" },
+      { "name": "mingw-w64-x86-64-dev", "version": "10.0.0-3" },
+      { "name": "binutils-mingw-w64-x86-64", "version": "2.40-2+10.4" },
+      { "name": "gcc-mingw-w64-x86-64", "version": "12.2.0-14+25.2" },
+      { "name": "g++-mingw-w64-x86-64", "version": "12.2.0-14+25.2" },
+      {
+        "name": "gcc (host, build-time only, never linked into the Windows binary)",
+        "version": "4:12.2.0-3"
+      },
+      { "name": "g++ (host, build-time only)", "version": "4:12.2.0-3" },
+      { "name": "libc6-dev (host, build-time only)", "version": "2.36-9+deb12u14" },
+      { "name": "meson (build-time only, compiles dav1d)", "version": "1.0.1-5" },
+      { "name": "ninja-build (build-time only)", "version": "1.11.1-2~deb12u1" },
+      { "name": "python3 (build-time only, meson dependency)", "version": "3.11.2-1+b1" },
+      { "name": "python3-minimal (build-time only)", "version": "3.11.2-1+b1" },
+      { "name": "curl (build-time only, baixa as fontes fixadas)", "version": "7.88.1-10+deb12u15" }
+    ],
+    "toolchainPackagesInstalledWithExactVersionPin": "Todos os pacotes acima sao instalados via 'apt-get install pacote=versao' explicito no Dockerfile -- se o snapshot pinado algum dia deixar de servir exatamente essa versao, o build falha alto em vez de resolver silenciosamente outra.",
+    "mingwAlternativePinned": "posix (fixado explicitamente via update-alternatives, nunca deixado para a ordem de instalacao do apt decidir)"
+  },
+  "configure": {
+    "flagsFile": "build/configure-flags.txt",
+    "extraLdflags": "-static -Wl,--no-insert-timestamp (baked no ./configure, sem -Wl,-Map -- o caminho do map e adicionado depois, por binario, via linha nova em ffbuild/config.mak, nunca compartilhado -- ver linkMaps.correction)",
+    "extraLdexeflags": "-static",
+    "pkgConfigFlags": "--static",
+    "pkgConfig": "pkg-config (generico do host -- o padrao '${cross-prefix}pkg-config' nao existe neste ambiente; PKG_CONFIG_LIBDIR aponta exclusivamente para o dav1d recem-compilado)",
+    "fullConfigurationString": "--arch=x86_64 --target-os=mingw32 --cross-prefix=x86_64-w64-mingw32- --enable-cross-compile --pkg-config=pkg-config --disable-gpl --disable-nonfree --enable-version3 --disable-network --disable-autodetect --disable-everything --disable-doc --disable-htmlpages --disable-manpages --disable-podpages --disable-txtpages --disable-debug --enable-static --disable-shared --enable-mediafoundation --enable-d3d11va --disable-hwaccels --enable-libdav1d --enable-decoder=libdav1d --enable-ffmpeg --enable-ffprobe --disable-ffplay --disable-avdevice --enable-avcodec --enable-avformat --enable-avutil --enable-swscale --enable-swresample --enable-protocol=file --enable-protocol=pipe --enable-demuxer=mov --enable-demuxer=matroska --enable-demuxer=yuv4mpegpipe --enable-demuxer=wav --enable-decoder=rawvideo --enable-muxer=mp4 --enable-muxer=mov --enable-decoder=h264 --enable-decoder=hevc --enable-decoder=mpeg4 --enable-decoder=vp8 --enable-decoder=vp9 --enable-decoder=prores --enable-decoder=dnxhd --enable-decoder=aac --enable-decoder=mp3 --enable-decoder=mp3float --enable-decoder=opus --enable-decoder=pcm_s16le --enable-decoder=pcm_s16be --enable-decoder=pcm_s24le --enable-decoder=pcm_s24be --enable-decoder=pcm_s32le --enable-decoder=pcm_u8 --enable-decoder=pcm_f32le --enable-decoder=pcm_alaw --enable-decoder=pcm_mulaw --enable-parser=h264 --enable-parser=hevc --enable-parser=mpeg4video --enable-parser=vp8 --enable-parser=vp9 --enable-parser=av1 --enable-parser=aac --enable-parser=mpegaudio --enable-parser=opus --enable-encoder=h264_mf --enable-encoder=aac --enable-filter=scale --enable-filter=format --enable-filter=aresample --enable-filter=aformat --extra-ldflags='-static -Wl,--no-insert-timestamp' --extra-ldexeflags=-static --pkg-config-flags=--static",
+    "license": "LGPL version 3 or later",
+    "revisionHistory": [
+      "Revisao 1: --enable-protocol=pipe; --enable-muxer=mp4 alem de mov; hwaccel D3D11VA explicito para o decoder nativo av1 (abordagem revertida na revisao 2).",
+      "Revisao 2: removido --enable-decoder=av1 e todos os --enable-hwaccel=av1_* -- substituidos por --enable-libdav1d + --enable-decoder=libdav1d (decode de AV1 100% por software, sem D3D11VA/DXVA2/GPU) e --disable-hwaccels simples (nenhum decoder deste build usa mais hwaccel de decode). --enable-d3d11va continua necessario so para compilar o ENCODER h264_mf (mfenc.c referencia tipos D3D11 incondicionalmente). Adicionado --pkg-config=pkg-config (o padrao '${cross-prefix}pkg-config' nao existe, achado real ao integrar dav1d).",
+      "Revisao 3: removido -Wl,-Map=... de --extra-ldflags no proprio ./configure (nunca mais compartilhado entre os dois binarios) -- cada binario agora e linkado numa chamada de make ISOLADA e SEQUENCIAL, com o caminho do map acrescentado via uma linha nova em ffbuild/config.mak (nunca sobrescrevendo LDFLAGS pela linha de comando do make, que quebrava o link com 'cannot find -lavfilter' ao bloquear a linha de common.mak que prepende os -L de cada biblioteca interna). Validacao fail-high adicionada: build.sh recusa continuar (exit 1) se qualquer map nao contiver o objeto-raiz correto ou contiver o do OUTRO binario, ou se os dois mapas forem byte-identicos.",
+      "Revisao 4: adicionado --enable-demuxer=yuv4mpegpipe, --enable-demuxer=wav e --enable-decoder=rawvideo. Achado real (confirmado executando o ffmpeg.exe candidato, nao so por inspecao): o gate funcional de CI gera uma entrada de baseline minima e deterministica (Y4M+WAV, via scripts/generate-baseline-fixture.mjs) para nao depender de nenhum ffmpeg de sistema no runner -- mas o candidato so tinha 'mov' e 'matroska' habilitados, entao rejeitava a propria entrada do gate com 'Invalid data found when processing input'. As tres flags novas sao decode-only, sem nenhuma biblioteca externa nem componente GPL/nonfree (yuv4mpegpipe e wav sao demuxers triviais do proprio libavformat; rawvideo e um decoder trivial do proprio libavcodec, sem dependencia). pcm_s16le (usado pelo WAV gerado) ja estava habilitado desde a Revisao 1."
+    ]
+  },
+  "linkMaps": {
+    "ffmpeg": "build/out1/ffmpeg-link.map (gerado via -Wl,-Map=... numa chamada de make ISOLADA, so para o alvo ffmpeg.exe)",
+    "ffprobe": "build/out1/ffprobe-link.map (chamada de make SEPARADA, alvo ffprobe.exe)",
+    "purpose": "Prova real de quais arquivos .a/.o foram estaticamente incorporados -- objdump -p so prova ausencia de DLLs DINAMICAS, nunca de bibliotecas ESTATICAS. Ver docs/SBOM.md, secao 'Link map'.",
+    "correction": "Revisao anterior gerava os dois link maps na MESMA chamada de `make -j$NPROC` (link paralelo de ffmpeg.exe e ffprobe.exe compartilhando -Wl,-Map=... vindo de --extra-ldflags do configure) -- os dois arquivos resultantes eram BYTE-IDENTICOS (confirmado com cmp), cada um contendo tanto fftools/ffmpeg.o quanto fftools/ffprobe.o. Corrigido: cada binario agora e linkado numa chamada de `make` SEPARADA e SEQUENCIAL, pedindo so aquele arquivo-alvo, com LDFLAGS reconstruido acrescentando uma linha nova a ffbuild/config.mak (LDFLAGS := $(LDFLAGS) -Wl,-Map=<caminho>) em vez de sobrescrever via linha de comando (que travaria a linha de common.mak que prepende os -L de cada biblioteca interna, quebrando o link com 'cannot find -lavfilter').",
+    "sha256": {
+      "ffmpegLinkMap": "34b33d53c889addf2832e8c45fe459e66ae96a37a27dea246b4efe9cd68ff989",
+      "ffprobeLinkMap": "e75feecbbc807b4d6859dd9ef01d39b8715665ae65f6b2fe468b23656f9bea9d",
+      "confirmedDistinct": true,
+      "note": "sha256 dos dois mapas DIFERENTES entre si (nunca copias uma da outra) E identicos entre build1/build2 (reproduzivel) -- ver LINKMAP-SHA256SUMS.txt em out1/out2. Valores atualizados nesta revisao (Revisao 4, --enable-demuxer=yuv4mpegpipe/wav + --enable-decoder=rawvideo) -- confirmados por reconstrucao Docker real, dois builds independentes, cmp byte a byte."
+    },
+    "failHighValidation": {
+      "description": "build.sh valida (exit 1 se falhar) que ffmpeg-link.map contem 'fftools/ffmpeg.o' e NAO contem 'fftools/ffprobe.o', que ffprobe-link.map contem 'fftools/ffprobe.o' e NAO contem 'fftools/ffmpeg.o', e que os dois arquivos nunca sao byte-identicos (cmp).",
+      "confirmedRootObjects": {
+        "ffmpegLinkMap": "fftools/ffmpeg.o presente (60 ocorrencias), fftools/ffprobe.o AUSENTE",
+        "ffprobeLinkMap": "fftools/ffprobe.o presente (32 ocorrencias), fftools/ffmpeg.o AUSENTE"
+      }
+    },
+    "staticArchivesLoaded": [
+      "libavcodec.a",
+      "libavformat.a",
+      "libavutil.a",
+      "libswscale.a",
+      "libswresample.a",
+      "/build/dav1d-install/lib/libdav1d.a",
+      "libmingw32.a",
+      "libmingwex.a",
+      "libmoldname.a",
+      "libmsvcrt.a",
+      "libpthread.a (winpthread)",
+      "libgcc.a",
+      "libgcc_eh.a",
+      "libatomic.a",
+      "libadvapi32.a",
+      "libbcrypt.a",
+      "libkernel32.a",
+      "libm.a",
+      "libmfuuid.a",
+      "libole32.a",
+      "libpsapi.a",
+      "libshell32.a",
+      "libstrmiids.a",
+      "libuser32.a (stubs de importacao, sem codigo)"
+    ]
+  },
+  "binaries": {
+    "ffmpeg": {
+      "fileName": "ffmpeg.exe",
+      "sha256Build1": "40d012779b85fab5415aa018a501ec405a46cba17392877f882b598c7f0598f6",
+      "sha256Build2": "40d012779b85fab5415aa018a501ec405a46cba17392877f882b598c7f0598f6",
+      "byteIdentical": true,
+      "note": "Hash atualizado na Revisao 4 (--enable-demuxer=yuv4mpegpipe/wav + --enable-decoder=rawvideo, ver configure.revisionHistory) -- reconstruido de verdade (docker build + dois docker run independentes) e confirmado byte-identico com cmp nesta sessao.",
+      "declaredDllImports": ["bcrypt.dll", "KERNEL32.dll", "msvcrt.dll", "ole32.dll", "SHELL32.dll"]
+    },
+    "ffprobe": {
+      "fileName": "ffprobe.exe",
+      "sha256Build1": "3e0074d115a2d7af5cced6125d8e49240c656ec2484ad5973a330438fd265b4b",
+      "sha256Build2": "3e0074d115a2d7af5cced6125d8e49240c656ec2484ad5973a330438fd265b4b",
+      "byteIdentical": true,
+      "note": "Hash atualizado pelo mesmo motivo do ffmpeg.exe acima.",
+      "declaredDllImports": ["bcrypt.dll", "KERNEL32.dll", "msvcrt.dll", "ole32.dll", "SHELL32.dll"]
+    }
+  },
+  "reproducibility": {
+    "buildsCompared": 2,
+    "identical": true,
+    "method": "sha256sum + cmp byte-a-byte, dois containers efemeros separados a partir da mesma imagem, mesmo commit/tag/hash de fonte, git clean -fdx entre execucoes",
+    "knownDeterminismMitigations": [
+      "SOURCE_DATE_EPOCH fixado",
+      "TZ=UTC, LC_ALL=C",
+      "-Wl,--no-insert-timestamp (remove o TimeDateStamp do cabecalho PE)",
+      "variante posix do gcc-mingw-w64 fixada via update-alternatives",
+      "GIT_AUTHOR_DATE/GIT_COMMITTER_DATE fixados em SOURCE_DATE_EPOCH para o commit 'pristine' local usado so para diff -- achado real: o meson.build do dav1d roda 'git describe --long --always' para gerar vcs_version.h (embutido no binario); sem data de commit fixa, cada execucao criava um commit com hash diferente, tornando os binarios NAO byte-identicos mesmo com fonte identica",
+      "apt fixado por snapshot.debian.org (timestamp imutavel), nunca por espelho movel",
+      "fontes de FFmpeg/dav1d baixadas como tarball fixo por URL+SHA256, nunca git fetch"
+    ]
+  },
+  "sourcePackage": {
+    "generatedBy": "build/package-source.sh (roda no HOST, nao dentro do container)",
+    "correction": "Revisao anterior montava o pacote DENTRO do container de build.sh -- so tinha acesso ao contexto do Docker (build/), nunca a docs/ (licencas, SBOM, BUILD_MANIFEST.json, REPRODUCE.md, avisos de terceiros), entao o pacote gerado nao era autossuficiente por construcao. Corrigido: package-source.sh roda no host, alcancando os dois diretorios, e o proprio Dockerfile agora tambem vendoriza as fontes (COPY sources/ /build/vendored-sources/) para que o pacote extraido, com SEU PROPRIO Dockerfile, consiga reconstruir sem rede nenhuma para as fontes de FFmpeg/dav1d.",
+    "correction2": "Segundo achado real: package-source.sh nao funcionava a partir de um clone limpo -- lia os tarballs de build/sources/*.tar.gz, um diretorio gitignored que so tinha conteudo porque uma sessao anterior baixou os arquivos manualmente ali (logo apos git clone, so existe o .gitkeep rastreado). Corrigido: build.sh agora copia os tarballs, DEPOIS de verificar o SHA-256, para $OUT_DIR/sources/ (bind-mounted para o host); package-source.sh le de $SRC_OUT_DIR/sources/ (ou baixa direto das URLs fixadas em sources.lock.json se ausentes ali), reconferindo o SHA-256 antes de empacotar. Tambem trocado o staging de um diretorio persistente dentro do repo (.source-package-stage/) para mktemp -d fora do repo, com trap cleanup EXIT INT TERM -- nenhum arquivo temporario sobra apos o script, git status --short nunca mostra artefatos de empacotamento.",
+    "outputFile": "sonder-ffmpeg-source.tar.gz (gerado em out1/out2 pelo package-source.sh, nunca commitado -- coberto por .gitignore)",
+    "sha256Note": "CORRECAO (autorreferencia): este manifesto e um dos arquivos INCLUIDOS dentro do proprio sonder-ffmpeg-source.tar.gz -- gravar aqui o SHA-256 do pacote e um paradoxo (o hash so existe depois do pacote estar montado, mas o pacote so esta completo depois do hash ser gravado; atualizar o valor muda o conteudo do arquivo, que muda o hash do pacote, que teria que ser atualizado de novo, indefinidamente). O checksum real e publicado EXTERNAMENTE, ao lado do pacote, nunca dentro dele: 'package-source.sh' grava 'sonder-ffmpeg-source.tar.gz.sha256' junto do .tar.gz (mesmo diretorio, fora do pacote) -- esse sidecar e a fonte de verdade do hash, nao este manifesto.",
+    "sha256SidecarFile": "sonder-ffmpeg-source.tar.gz.sha256 (gerado por package-source.sh, ao lado do pacote, nunca incluido dentro dele)",
+    "deterministicGeneration": {
+      "method": "LC_ALL=C/LANG=C/TZ=UTC fixados no topo do script (afeta todo comando, inclusive sort) + find | LC_ALL=C sort (ordem fixa, locale explicito tambem na propria chamada) | tar --format=gnu --numeric-owner --owner=0 --group=0 --mtime=@1700000000 (formato de tar fixado explicitamente, mtime fixo, owner/group normalizados) | gzip -n -9 (gzip sem timestamp embutido)",
+      "localeCorrection": "Achado real: regenerar o pacote a partir da MESMA arvore em ambientes com locale diferente (uma sessao com C.UTF-8 vs Git Bash do Windows com pt_BR.UTF-8) produzia hashes DIFERENTES -- a ordem de colacao do `sort` sem LC_ALL fixado divergia (um pacote comecava por README.md, outro por docs/), apesar do conteudo interno ser identico. Corrigido fixando LC_ALL=C/LANG=C no topo do script e reforcando explicitamente na chamada de sort.",
+      "generatedTwice": true,
+      "sha256Identical": true,
+      "confirmedAcrossEnvironments": "4 geracoes independentes (2 na sessao normal, 2 via C:\\Program Files\\Git\\bin\\bash.exe com LANG=pt_BR.UTF-8) -- mesmo SHA-256 nas 4, mesma ordem em tar -tzf, mesmo SHA-256 da arvore extraida nas 4",
+      "confirmedBy": "sha256sum + cmp byte-a-byte entre as geracoes independentes -- identico; tar -tzf diff -- identico; sha256sum recursivo da arvore extraida -- identico"
+    },
+    "selfSufficiencyTest": {
+      "method": "Extraido para um diretorio TEMPORARIO fora do repositorio (nunca build/), imagem Docker construida com --no-cache a partir SO do conteudo extraido, container executado com --network none (prova de que build.sh nao precisa de rede para as fontes de FFmpeg/dav1d quando vendorizadas)",
+      "result": "sucesso -- ffmpeg.exe/ffprobe.exe resultantes byte-identicos aos do build original (mesmos SHA-256 da secao 'binaries' acima), link maps tambem byte-identicos, validados com sucesso (fail-high passou)",
+      "confirms": "o pacote extraido e suficiente para reproduzir o build sem depender de nenhum arquivo do repositorio original"
+    },
+    "cleanCloneFlowTest": {
+      "method": "Simulado um clone limpo (copia do diretorio de trabalho SEM build/sources/*.tar.gz -- so o .gitkeep rastreado sobrevive) num diretorio isolado fora do repositorio; rodado o fluxo completo git-clone-equivalente: docker build -> docker run (com rede, busca as fontes pela primeira vez) -> package-source.sh (le de out/sources/, populado pelo docker run anterior)",
+      "result": "sucesso -- build.sh baixou e verificou os dois tarballs pela rede, copiou para out/sources/; package-source.sh consumiu dali sem precisar de nenhum arquivo local pre-existente",
+      "confirms": "o comando documentado em REPRODUCE.md (git clone -> docker build -> docker run -> package-source.sh) funciona de verdade a partir de um clone limpo, nao so quando sources/ ja tem tarballs baixados manualmente numa sessao anterior"
+    },
+    "contents": [
+      "README.md (instrucoes de reproducao dentro do proprio pacote)",
+      "build/{Dockerfile,build.sh,configure-flags.txt,sources.lock.json,mingw-w64-x86_64-cross.meson}",
+      "build/sources/{ffmpeg,dav1d}.tar.gz (fontes originais vendorizadas)",
+      "build/{ffmpeg,dav1d}-changes.diff (evidencia real do ultimo build, nunca reescritos a mao)",
+      "docs/{SBOM.md,BUILD_MANIFEST.json,REPRODUCE.md,THIRD_PARTY_NOTICES_DRAFT.md,USAGE_MATRIX.md,VALIDATION_REPORT.md,licenses/}"
+    ]
+  },
+  "changesFromUpstream": "Nenhuma para nenhuma das duas fontes -- ver ffmpeg-changes.diff e dav1d-changes.diff (gerados por git diff contra uma baseline pristina criada logo apos extrair e verificar cada tarball, nunca contra um remoto), vazios em toda execucao real",
+  "forbiddenCheck": {
+    "forbiddenConfigureFlags": ["--enable-gpl", "--enable-nonfree"],
+    "forbiddenComponents": [
+      "libx264",
+      "libx265",
+      "libxvid",
+      "libvidstab",
+      "libfdk-aac",
+      "libfdk_aac",
+      "openh264",
+      "libvpx",
+      "libaom",
+      "libopus",
+      "libmp3lame",
+      "gmp",
+      "openssl",
+      "libvmaf",
+      "libass",
+      "libjxl",
+      "libwebp",
+      "openjpeg",
+      "rav1e",
+      "libsvtav1",
+      "libsrt"
+    ],
+    "forbiddenComponentsNote": "dav1d foi REMOVIDO desta lista nesta revisao -- e agora a unica biblioteca externa deliberadamente incluida (ver 'externalCodecLibrary' acima), nao mais proibida.",
+    "confirmedAbsent": true,
+    "method": "grep -iE contra a saida real de 'ffmpeg -buildconf' do binario compilado, MAIS o link map (secao 'linkMaps' acima) confirmando que nenhum .a dessas bibliotecas foi carregado"
+  },
+  "knownLimitations": [
+    "libgcc/libgcc_eh/libatomic (runtime do GCC) sao GPL-3.0-or-later, mas cobertos pela GCC Runtime Library Exception (licenses/GCC/RUNTIME.LIBRARY.EXCEPTION), que permite linkagem estatica sem propagar GPL ao binario resultante -- gerados automaticamente pelo compilador, nunca escritos/chamados diretamente pelo codigo do produto.",
+    "dav1d adiciona ~101 objetos assembly/C ao binario final (ver ffmpeg-static-members.txt) -- aumenta o tamanho do executavel mas nao introduz nenhuma dependencia de GPU/hardware."
+  ]
+}
