@@ -147,6 +147,13 @@ jobs:
           name: release-build-output
           path: artifacts
 
+      - name: Verify corresponding-source package on Windows
+        run: >-
+          node scripts/verify-source-package.mjs
+          --package artifacts/sonder-ffmpeg-source.tar.gz
+          --sidecar artifacts/sonder-ffmpeg-source.tar.gz.sha256
+          --check-self-reference
+
       - name: Functional verification gate (shared script -- same one verify.yml calls)
         shell: pwsh
         run: pwsh -File scripts/verify-functional.ps1 -ArtifactsDir artifacts

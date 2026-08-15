@@ -120,6 +120,8 @@ jobs:
             build/out1/ffmpeg-link.map
             build/out1/ffprobe-link.map
             build/out1/LINKMAP-SHA256SUMS.txt
+            build/out1/sonder-ffmpeg-source.tar.gz
+            build/out1/sonder-ffmpeg-source.tar.gz.sha256
           if-no-files-found: error
           retention-days: 7
 
@@ -138,6 +140,13 @@ jobs:
         with:
           name: windows-runtime-artifacts
           path: artifacts
+
+      - name: Verify corresponding-source package on Windows
+        run: >-
+          node scripts/verify-source-package.mjs
+          --package artifacts/sonder-ffmpeg-source.tar.gz
+          --sidecar artifacts/sonder-ffmpeg-source.tar.gz.sha256
+          --check-self-reference
 
       - name: Functional verification gate (shared script -- same one release.yml calls)
         shell: pwsh
