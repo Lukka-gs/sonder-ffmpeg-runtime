@@ -100,5 +100,7 @@ scripts/         Node.js verification scripts used by CI
 
 ## Status
 
-This repository is being prepared for eventual publication as `Lukka-gs/sonder-ffmpeg-runtime`. It
-has not yet been published, and no release has been made.
+This is the public, independently auditable build repository for the FFmpeg runtime distributed
+with Sonder Desktop. Versioned binaries, corresponding source, checksums, the SBOM, and third-party
+notices are published together on the
+[`runtime-v1.0.0` release page](https://github.com/Lukka-gs/sonder-ffmpeg-runtime/releases/tag/runtime-v1.0.0).

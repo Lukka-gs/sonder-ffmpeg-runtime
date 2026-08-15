@@ -1,5 +1,6 @@
 {
   "project": "sonder-ffmpeg-runtime",
+  "releaseTag": "runtime-v1.0.0",
   "purpose": "Build minimo LGPL do FFmpeg + dav1d para Windows x64 -- runtime independente, sem nenhum aplicativo consumidor incluido neste repositorio.",
   "generatedAt": "2026-08-15",
   "sourcesLockFile": "build/sources.lock.json",
