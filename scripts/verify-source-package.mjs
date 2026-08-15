@@ -24,7 +24,7 @@
 
 import { createHash } from "node:crypto";
 import { readFileSync, existsSync, mkdtempSync, rmSync, readdirSync, statSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
@@ -140,15 +140,19 @@ function main() {
   if (args["sidecar"]) {
     if (!requireFile(args["sidecar"], "--sidecar")) return;
     const sidecarText = readFileSync(args["sidecar"], "utf8").trim();
-    const match = sidecarText.match(/^([0-9a-fA-F]{64})/);
+    const match = sidecarText.match(/^([0-9a-fA-F]{64})\s+\*?([^\r\n]+)$/);
     if (!match) {
-      fail(`sidecar (${args["sidecar"]}) não contém um SHA-256 reconhecível`);
+      fail(`sidecar (${args["sidecar"]}) não contém um registro sha256sum completo`);
     } else if (match[1].toLowerCase() !== packageHash) {
       fail(
         `sidecar não confere com o pacote real. sidecar=${match[1]} pacote=${packageHash}`,
       );
+    } else if (match[2].trim() !== basename(packagePath)) {
+      fail(
+        `sidecar não é portátil. esperado=${basename(packagePath)} registrado=${match[2].trim()}`,
+      );
     } else {
-      ok("sidecar externo confere exatamente com o SHA-256 real do pacote");
+      ok("sidecar externo confere e referencia somente o nome portátil do pacote");
     }
   }
 

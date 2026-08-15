@@ -187,4 +187,10 @@ build_deterministic_tar "$OUTPUT"
 # pacote -- o checksum real fica so neste sidecar, gerado DEPOIS que o
 # .tar.gz ja esta fechado, e nunca copiado para dentro do STAGE_DIR/pacote.
 # ---------------------------------------------------------------------------
-sha256sum "$OUTPUT" | tee "${OUTPUT}.sha256"
+# Gere o registro a partir do diretorio do artefato para que o nome salvo no
+# sidecar seja portavel. Um consumidor que baixar o .tar.gz e o .sha256 na
+# mesma pasta deve conseguir executar `sha256sum -c` sem recriar um caminho
+# interno do CI como `out1/`.
+OUTPUT_DIR="$(dirname "$OUTPUT")"
+OUTPUT_BASENAME="$(basename "$OUTPUT")"
+(cd "$OUTPUT_DIR" && sha256sum "$OUTPUT_BASENAME") | tee "${OUTPUT}.sha256"
