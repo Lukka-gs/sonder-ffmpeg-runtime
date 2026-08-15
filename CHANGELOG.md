@@ -4,8 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [runtime-v1.0.0] - 2026-08-15
+
 Initial extraction of the reproducible minimal LGPL FFmpeg + dav1d build into its own,
-independent repository. No release has been published yet.
+independent repository and first public runtime release.
 
 ### Added
 
